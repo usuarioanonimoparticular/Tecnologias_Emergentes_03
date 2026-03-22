@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Geolocalización OSM</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f9;
+      padding: 20px;
+    }
+
+    h2 {
+      text-align: center;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      margin: 15px auto;
+      border-radius: 10px;
+      max-width: 700px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    input {
+      margin: 5px;
+      padding: 6px;
+      width: 120px;
+    }
+
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #007bff;
+      color: white;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background: #007bff;
+      color: white;
+    }
+
+    #map {
+      height: 400px;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>🌍 Geolocalización - OpenStreetMap</h2>
+
+<div class="card">
+  <h3>📍 Origen</h3>
+  Lat: <input id="oLat" value="-16.398866">
+  Lon: <input id="oLon" value="-71.536961">
+
+  <h3>🎯 Destino</h3>
+  Lat: <input id="dLat" value="-16.404010">
+  Lon: <input id="dLon" value="-71.524753">
+
+  <br><br>
+  <button onclick="consultar()">Calcular Ruta</button>
+  <button onclick="verHistorial()">Ver Historial</button>
+  <button onclick="eliminarHistorial()">Eliminar Historial</button>
+
+  <p>📏 Distancia: <span id="dist"></span> km</p>
+  <p>⏱️ Tiempo: <span id="tiempo"></span> min</p>
+</div>
+
+<div class="card">
+  <h3>🗺️ Mapa de Ruta</h3>
+  <div id="map"></div>
+</div>
+
+<div class="card">
+  <h3>📊 Historial</h3>
+  <table id="tabla">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Origen</th>
+        <th>Destino</th>
+        <th>Distancia</th>
+        <th>Tiempo</th>
+        <th>Fecha</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+
+// 🌍 Inicializar mapa
+let map = L.map('map').setView([-16.40, -71.53], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap'
+}).addTo(map);
+
+let routeLayer;
+let markers = [];
+
+// 🚗 Calcular ruta
+async function consultar() {
+  const oLat = val('oLat');
+  const oLon = val('oLon');
+  const dLat = val('dLat');
+  const dLon = val('dLon');
+
+  const res = await fetch(`/api/ruta?oLat=${oLat}&oLon=${oLon}&dLat=${dLat}&dLon=${dLon}`);
+  const data = await res.json();
+
+  set('dist', data.distancia_km);
+  set('tiempo', data.duracion_min);
+
+  // Limpiar mapa
+  if (routeLayer) map.removeLayer(routeLayer);
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  // Dibujar ruta
+  routeLayer = L.geoJSON(data.geometry).addTo(map);
+
+  // Marcadores
+  const origen = L.marker([oLat, oLon]).addTo(map).bindPopup("Origen").openPopup();
+  const destino = L.marker([dLat, dLon]).addTo(map).bindPopup("Destino");
+
+  markers.push(origen, destino);
+
+  map.fitBounds(routeLayer.getBounds());
+}
+
+// 📊 Ver historial
+async function verHistorial() {
+  const res = await fetch('/api/historial');
+  const data = await res.json();
+
+  const tbody = document.querySelector('#tabla tbody');
+  tbody.innerHTML = '';
+
+  data.forEach(row => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${row.id}</td>
+        <td>${row.origen_lat}, ${row.origen_lon}</td>
+        <td>${row.destino_lat}, ${row.destino_lon}</td>
+        <td>${(row.distancia / 1000).toFixed(2)} km</td>
+        <td>${(row.duracion / 60).toFixed(1)} min</td>
+        <td>${row.fecha}</td>
+      </tr>
+    `;
+  });
+}
+
+// 🗑️ Eliminar historial
+async function eliminarHistorial() {
+  if (!confirm("¿Eliminar todo el historial?")) return;
+
+  await fetch('/api/historial', { method: 'DELETE' });
+  alert("Historial eliminado");
+
+  verHistorial();
+}
+
+// Helpers
+function val(id) {
+  return document.getElementById(id).value;
+}
+
+function set(id, value) {
+  document.getElementById(id).innerText = value;
+}
+
+</script>
+
+</body>
+</html>
